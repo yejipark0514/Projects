@@ -17,7 +17,7 @@ Ricotti	Franco	Milan	     Italy	9532.93
 Schmitt	Carine 	Nantes	   France	10063.8
 Smith	  Thomas 	London     UK	    10868.04
 
-*VIP customers
+* VIP customers
 
 Freyre	 Diego 	Madrid	   Spain	    326519.66
 Nelson	 Susan	San Rafael USA	      236769.39
