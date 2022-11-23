@@ -1,4 +1,4 @@
-# Personal-Projects
+# Projects
 
 ## Customers and Products Analysis Using SQL
 
