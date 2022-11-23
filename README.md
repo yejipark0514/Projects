@@ -26,4 +26,4 @@ Such strategies should consider driving loyalty and attracting more customers de
 
 Question 3: How much can we spend on acquiring new customers?
 
-To predict future profit, using LTV would tell how much profit an average customer generates during their lifetime with the store. <br\> LTV = 39039.594388
+To predict future profit, using LTV would tell how much profit an average customer generates during their lifetime with the store. <br> LTV = 39039.594388
