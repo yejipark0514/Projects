@@ -11,12 +11,12 @@ Such strategies should consider driving loyalty and attracting more customers de
 
 * Least engaged customers
 
-Young	  Mary	  Glendale	 USA	  2610.87
-Taylor  Leslie	Brickhaven USA	  6586.02
-Ricotti	Franco	Milan	     Italy	9532.93
-Schmitt	Carine 	Nantes	   France	10063.8
-Smith	  Thomas 	London     UK	    10868.04
-
+* Young	  Mary	  Glendale	 USA	  2610.87
+* Taylor  Leslie	Brickhaven USA	  6586.02
+* Ricotti	Franco	Milan	     Italy	9532.93
+* Schmitt	Carine 	Nantes	   France	10063.8
+* Smith	  Thomas 	London     UK	    10868.04
+ 
 * VIP customers
 
 Freyre	 Diego 	Madrid	   Spain	    326519.66
