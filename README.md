@@ -4,6 +4,7 @@
 
 Question 1: Which Products Should We Order More of or Less of?
 To answer this question, I'll have to look at the inventory reports, including low stock and product performance. 
+
 The highest-performance products are the classic cars thus, they should be the priority for restocking. 
 
 Question 2: How should we match marketing and communication strategies to customer behaviors?
@@ -25,6 +26,4 @@ Such strategies should consider driving loyalty and attracting more customers de
 
 Question 3: How much can we spend on acquiring new customers?
 
-To predict future profit, using LTV would tell how much profit an average customer generates during their lifetime with the store. 
-
-LTV = 39039.594388
+To predict future profit, using LTV would tell how much profit an average customer generates during their lifetime with the store. <br\> LTV = 39039.594388
