@@ -45,6 +45,7 @@ COD_p2 <-
 # Aggregate player data for analysis
 player_data <- rbind(COD_p1, COD_p2)
 ```
+
 <p>&nbsp;</p>
 #### Clean GameType column values
 
@@ -78,6 +79,7 @@ gametype <-
 player_data <-
   cbind(player_data, gametype)
 ```
+
 <p>&nbsp;</p>
 #### Joining to determine the score limit
 ```{r}
@@ -185,6 +187,7 @@ player_data <-
   left_join(XP, by = c("XPType" = "xp_types")) %>%
   rename(c_XPTypes = corrected_xp)
 ```
+
 <p>&nbsp;</p>
 #### Calculating success percentage of hitting score limit
 
@@ -287,6 +290,7 @@ As the number of eliminations increases by 1 kill, we expect the TotalXP to incr
 **Question:**  Among the 3 different classification algorithms we used, which can more accurately classify if the player won or lost the game based on the match attributes?
 
 The three classification algorithms used were logistic regression (with backwards elimination), random forest, and support machine vector. To more accurately compare the models, we used the same train/test datasets across all three models. Before splitting the data, we standardized the data since SVM is based on distance. Standardizing or scaling the data should not affect the accuracy of the models. 
+
 <p>&nbsp;</p>
 #### Preparing the dataset
 ```{r}
@@ -382,6 +386,7 @@ confusionMatrix(data = as.factor(pred_won), positive = "1", reference = as.facto
 ```
 
 For Method 1, we used backward elimination for logistic regression to select the predictors used in the model. Using the new model, we created predicted values based on the `Test` dataset. To determine if the predicted values should be classified as won or lost, a threshold between the two needs to be established. We used a loop to check the threshold values from 0 to 1 using steps of 0.01 to determine the threshold that would produce the best accuracy. For this logistic model, we were able to accuracy classify 67.8 percent of the matches.
+
 <p>&nbsp;</p>
 ### Method 2: Random Forest
 
@@ -408,6 +413,7 @@ mean(pred_surv == Test$won_match)
 ```
 
 For Method 2, we used random forest to calculate the predicted probabilities in order to create a confusion matrix, in which we got an accuracy of 0.5977.
+
 <p>&nbsp;</p>
 ### Method 3: SVM
 ```{r, results='hide'}
@@ -446,6 +452,7 @@ Among the 3 classification methods, the logistic regression (Method 1) resulted 
 <p>&nbsp;</p>
 <p>&nbsp;</p>
 <p>&nbsp;</p>
+
 ### References
 <p>&nbsp;</p>
 Leibl, M. (2022). *Where is Call of Duty: Modern Warfare's Hardcore Mode?*. AppTrigger. https://apptrigger.com/2022/10/28/call-duty-modern-warfare-disable-crossplay/ 
