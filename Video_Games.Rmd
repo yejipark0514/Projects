@@ -1,0 +1,452 @@
+---
+title: "STAT380 Final Project"
+author: Jonathan Bryant, Natalie Chow, Yearin Kim, Yeji Park 
+output: html_document
+date: "December 12, 2022"
+---
+<p>&nbsp;</p>
+```{r,warning=FALSE,message=FALSE}
+rm(list = ls())
+library(tidyverse)
+library(fastDummies)
+library(rpart)
+library(rattle)
+library(caret)
+library(randomForest)
+library(e1071)
+library(glmnet)
+```
+
+#### Import Data
+```{r,warning=FALSE,message=FALSE}
+COD_p1 <- read_csv("CODGames_p1_380.csv")
+COD_p2 <- read_csv("CODGames_p2_380.csv")
+CODGameModes <- read_csv("CODGameModes.csv")
+```
+
+### Task 1
+
+**Research Question:** Which game mode is most likely to reach the score limit? 
+
+The data for this project consists of three separate datasets, which were used to determine the game mode that was most likely to reach the score limit. Each player's dataset was imported into their own dataframes, and then combined using the code below. A new variable `Player` was added to each dataframe before combining in case distinguishing each player became relevant for future analysis.
+<p>&nbsp;</p>
+#### Preparing the data
+```{r}
+# Create dataset for each player
+COD_p1 <- 
+  COD_p1 %>% 
+  mutate(Player = "p1")
+
+COD_p2 <-
+  COD_p2 %>% 
+  mutate(Player = "p2")  
+
+# Aggregate player data for analysis
+player_data <- rbind(COD_p1, COD_p2)
+```
+<p>&nbsp;</p>
+#### Clean GameType column values
+
+The values for GameType (mode) were slightly different between the two players. Player 2 included "HC" in front of the basic game type. This HC likely stands for "Hardcore", a variant of the standard or basic game modes (Liebl, 2022). For this analysis, the focus is on the basic types, so differentiating between `HC-TDM` and `TDM` would negatively impact the accuracy. To fix this, we added a new variable to `player_data` that contained only the basic data type.
+
+```{r}
+unique(player_data$GameType)
+
+# Create standard names for gametype
+gametype <- 
+  player_data %>%
+  mutate(TDM = ifelse(GameType == "HC - TDM" | GameType == "TDM", "TDM", NA), 
+         HP = ifelse(GameType == "HC - Hardpoint" | GameType == "Hardpoint", "Hardpoint", NA),
+         KC = ifelse(GameType == "HC - Kill Confirmed" | GameType == "Kill Confirmed", "Kill Confirmed", NA),
+         DOM = ifelse(GameType == "HC - Domination" | GameType == "Domination", "Domination", NA)) %>%
+  select(TDM, HP, KC, DOM) 
+
+# Combine all columns into one variable
+gametype <- 
+  coalesce(gametype$TDM, gametype$HP, gametype$KC, gametype$DOM) 
+
+# Make gametype a dataframe
+gametype <- data.frame(gametype)
+
+# Rename gametype as mode to make join easier
+gametype <-
+  gametype %>%
+  rename("Mode" = "gametype")
+
+# Adding Mode to player_data
+player_data <-
+  cbind(player_data, gametype)
+```
+<p>&nbsp;</p>
+#### Joining to determine the score limit
+```{r}
+player_data <- 
+  player_data %>%
+  inner_join(CODGameModes %>% select(Mode, ScoreLimit), 
+             by = c("Mode" = "Mode"))
+```
+
+When analyzing the data for each task, a significant issue was misspellings and inconsistent categorical data levels. These inconsistencies cause two main problems, duplication of categorical levels and compatibility with different packages. 
+
+The misspellings and other inconsistencies in some variables need to be fixed due to the nature of the research questions. When creating dummy variables, these misspelled values would become their own variable, changing the model. By correcting the values, we lower the overall number of variables (reduces computational complexity) and produce more accurate models. 
+
+Some categorical variables' values became an issue for specific packages. The randomforest package (randomForest) used in Task 3 was not able to utilize variables that contained backticks. These backticks are used automatically when dummy variables were created from categorical variables such as `PrimaryWeapon`. The fastDummies package took invalid variable names such as AK-47 and changed it to `AK-47`, which is generally seen as a valid name for R. Unfortunately, the randomForest package cannot handle these variable names so the values needed to be corrected before turned into dummy/indicator variables.
+
+In the code below, the names of the variables in the data are not actually changed, but a variable with corrected values is added to the dataset. These variables are designated with a "c_" to distinguish them from the ones found in the original dataset. We chose not to replace the incorrect names because we may be interested in utilizing them for other research questions in the future.
+  
+<p>&nbsp;</p>
+#### Fix misspellings in Map1, Map2, MapVote, Primary Weapon and XPType 
+```{r}
+## Find unique levels in Maps
+map_corrector <- unique(c(player_data$Map1, player_data$Map2, player_data$Choice))
+
+## Make ma_corrector a tibble
+map_corrector <- as_tibble(map_corrector)
+
+## List of correct map names
+correct_map_names <- c("Amerika", "Armada", "Apocolypse", "Cartel","Crossroads", "Checkmate", "Collateral", "Deisel", "Deprogram", "Echelon", "Express", "Garrison", "Hijacked", "Jungle", "Miami", "Moscow", "Nuketown", "Raid", "Rush", "Satellite", "Slums", "Standoff",  "The", "WMD", "Yamanutau", "Zoo")
+
+## Make a tibble
+correct_map_names <- as_tibble(correct_map_names) 
+
+## Create key to match possible misspelled names against
+correct_map_names <-
+  correct_map_names %>%
+  rename(MapNames = value) %>%
+  # Majority of matching is done by first 3 letters of the maps name
+  mutate(first_three = str_to_lower(str_extract(string = MapNames, pattern = "([:alpha:]{3})"))) %>%
+  # Following rows are outliers
+  add_row(MapNames = "Deisel", first_three = "die") %>%
+  add_row(MapNames = "Drive_In", first_three = "dri") %>%
+  add_row(MapNames = "Raid", first_three = "ria") %>%
+  add_row(MapNames = "Rush", first_three = "rua") %>%
+  add_row(MapNames = "Armada", first_three = "amr")
+
+## Prep MapNames to match against correct names
+map_corrector <-
+  map_corrector %>%
+  rename(MapNames = value) %>%
+  arrange(MapNames) %>%
+  mutate(main_map_name = str_extract(string = MapNames, pattern = "([:alpha:]*)"),
+         first_three = str_to_lower(str_extract(string = MapNames, pattern = "([:alpha:]{3})")),
+         second_name = str_extract(string = MapNames, pattern = "(?<=[:space:]{1})([:alpha:]*)")) %>%
+  #Join to make matches
+  left_join(correct_map_names, by = ("first_three" = "first_three")) %>%
+  rename(corrected_1st_name = MapNames.y)
+
+## Make sure second portion of the name is correctly assigned
+map_corrector <- 
+  map_corrector %>%
+  mutate(corrected_2nd_name = ifelse(grepl("[rR]",map_corrector$second_name), "Strike", ifelse(grepl("[P]", map_corrector$second_name), "Pines", ifelse(grepl("[-]", map_corrector$second_name), "_in", ifelse(grepl("[Hall]", map_corrector$second_name), "'64_Halloween", ifelse(grepl("['64]", map_corrector$second_name), "_'64", NA))))),
+         # Final correct names are saved as c_map
+         c_map = ifelse(is.na(corrected_2nd_name) == TRUE, corrected_1st_name, paste(corrected_1st_name, corrected_2nd_name, sep = "_")))
+```
+
+```{r}
+# Add corrected names back to player_data
+player_data <- 
+  player_data %>%
+  left_join(map_corrector %>% select(MapNames.x, c_map), by = c("Map1" = "MapNames.x")) %>%
+  rename("c_Map1" = "c_map") %>%
+  left_join(map_corrector %>% select(MapNames.x, c_map), by = c("Map2" = "MapNames.x")) %>%
+  rename("c_Map2" = "c_map") %>%
+  left_join(map_corrector %>% select(MapNames.x, c_map), by = c("Choice" = "MapNames.x")) %>%
+  rename("c_Choice" = "c_map")
+```
+
+```{r}
+# Fix Primary Weapon Names
+weapon_names <- as_tibble(unique(c(player_data$PrimaryWeapon)))
+
+weapon_names <-
+  weapon_names %>%
+  rename(weapon_names = value)
+
+corrected_names <- c("M16", "MP5", "AK_47", "Krig_6", "QBZ_83", "Pellington_703", "FFAR_1", "Type_63", "MG_82", "XM4", "LC_10", NA, "M60", "ShadowHunter", "FARA_83", "Milano", "DMR_14", "Pellington", "KSP_14", "Groza", "AUG", "Milano_821", "Magnum", "RPD")
+
+weapon_names <- cbind(weapon_names, corrected_names)
+
+player_data <-
+  player_data %>%
+  left_join(weapon_names, by = c("PrimaryWeapon" = "corrected_names")) %>%
+  rename(c_PrimaryWeapon = weapon_names)
+```
+
+```{r}
+# Fix XP types
+xp_types <- c("10% Boost", "Double XP + 10%")
+corrected_xp <- c("10_Boost", "Double_XP_Plus_10")
+
+XP <- as_tibble(cbind(xp_types, corrected_xp))
+
+player_data <-
+  player_data %>%
+  left_join(XP, by = c("XPType" = "xp_types")) %>%
+  rename(c_XPTypes = corrected_xp)
+```
+<p>&nbsp;</p>
+#### Calculating success percentage of hitting score limit
+
+The `Result` variable contained the score for both teams, which is used to see if either team reached the score limit in each match. Even though the actual scores for each team are numeric values, `Result` is a character due to ` - ` between the scores. We isolated the player (team) and enemy (team) scores by using regex to extract the numerical values in series from the beginning (player score) and also from the end (enemy score). These scores are added as new variables to `player_data`.
+
+```{r}
+# Splitting the result variable into player score or enemy score
+player_data <- 
+  player_data %>%
+  mutate(player_score = str_extract(string = Result, pattern = "(\\d*)"),
+         enemy_score = str_extract(string = Result, pattern = "(\\d*$)"),
+         player_score = as.numeric(player_score),
+         enemy_score = as.numeric(enemy_score))
+
+## Fixed to show either player or enemy score hit score limit
+player_data <- 
+  player_data %>%
+  mutate(reached_score_limit = ifelse(player_score == ScoreLimit, 1, ifelse(enemy_score == ScoreLimit,1,0)))
+
+# Calculate success percentage
+df <- 
+  player_data %>%
+  group_by(Mode) %>%
+  summarize(total_games = n(),
+          rsl_total = sum(reached_score_limit, na.rm = TRUE),
+          rsl_percent = rsl_total/total_games) %>%
+  arrange(desc(rsl_percent))
+df
+``` 
+<p>&nbsp;</p>
+#### Data Visualization of the success percentage for each game mode 
+```{r}
+ggplot(data = df, mapping = aes(x = reorder(Mode, -rsl_percent), y = rsl_percent)) +
+  geom_bar(stat="identity") +
+  labs(x = "Mode", y = "% of games that reached the score limit", title = "The Percent of Games That Reach The Score Limit By Game Mode")
+```
+
+After separating the player and enemy scores, we compared each team's score to the limit for each map. Using this result, we calculated the success percentage for each game mode. Based on the graph above, the Domination game mode is most likely to reach the score limit because it has the highest success percentage of 100%. 
+
+### Task 2
+
+**Research Question:** Build a model for modeling the TotalXP variable. Which predictors are associated with TotalXP? What is the relationship between one of the predictors and TotalXP?
+<p>&nbsp;</p>
+#### a. Which predictors are associated with the TotalXP?
+
+We used a linear regression with backwards elimination to find the predictors of TotalXP. Since there were 38 different variables or features of this dataset, backwards elimination was used to select the appropriate variables for this model. One issue that needed to be resolved before building the model was NA values. The first section of the code below looks at how complete each variable is within the dataset. There were four variables that only contained NA values and thirteen more that had less than 80% complete. These seventeen variables were removed from the dataset as they likely had little to no impact on the model.
+
+Based on our understanding of the game, we felt that the result of the match was likely associated to the TotalXP. Since `Result` contained only character values, we created a dummy variable, `won_match` from `player_score` and `enemy_score`. Lastly, we created dummy variables for the remaining categorical variables and removed the variables with low completeness or ones that caused issues with building the model (such as causing perfect separation). 
+
+```{r, warning=FALSE}
+# Find variables with high percent of NAs. We will remove variables with <=20% completion
+num_na <- sapply(player_data, function(x) sum(is.na(x)))
+na_per_column <- data.frame(num_na)
+na_per_column <- 
+  na_per_column %>%
+  mutate(perc_missing = format(round((num_na/nrow(player_data)),2))) %>%
+  arrange(desc(perc_missing))
+head(na_per_column, 10)
+
+# Instead of result, add if they win
+player_data <-
+  player_data %>%
+  mutate(won_match = ifelse(player_score > enemy_score, 1, 0))
+
+# Select variables with only low percent of NA and create dummy variables for categorical variables
+player_data_sub <-
+  player_data %>%
+  select(c(-Diffuses, -Plants, -Detonates, -Deposits, -Map1, -Map2, -Choice, -MapVote, -Date, -Result, -GameType, -Confirms, -Denies, -Captures, -Objectives, -Time_Sec, -Time_Min, -ObjectiveKills, -c_Map1, -c_Map2, -PrimaryWeapon, -XPType)) %>%
+  dummy_cols(select_columns = c("FullPartial", "PrimaryWeapon", "XPType", "Player", "Mode", "c_Choice", "DidPlayerVote", "c_PrimaryWeapon", "c_XPTypes"), remove_selected_columns = TRUE, ignore_na = TRUE)
+
+player_data_sub <-
+  player_data_sub %>%
+  rename(Mode_Kill_Confirmed = `Mode_Kill Confirmed`)
+```
+
+```{r,warning=FALSE,message=FALSE, results='hide'}
+# Use backwards elimination to determine the appropriate variables
+full_model <- glm(TotalXP ~ . , 
+                  family = gaussian,
+                  data = player_data_sub)
+
+model_task2 <- stats::step(object = full_model, 
+            scope = list(upper = full_model),
+            data = player_data_sub,
+            direction = "backward")
+```
+
+The predictors associated with TotalXP are Eliminations, Score, ScoreLimit, player_score, enemy_score, won_match, Mode_Domination, c_Choice_Checkmate, c_Choice_Crossroads_Strike, c_Choice_Miami_Strike, c_Choice_Rush, c_Choice_The_Pines, c_PrimaryWeapon_AUG, c_PrimaryWeapon_Groza, _PrimaryWeapon_M16, c_PrimaryWeapon_M60, c_PrimaryWeapon_Magnum, c_PrimaryWeapon_Milano, c_PrimaryWeapon_MP5, c_PrimaryWeapon_Pellington, c_PrimaryWeapon_RPD and c_XPTypes_10_Boost. 
+
+
+### b. Explain the relationship between the predictor and TotalXP
+```{r}
+summary(model_task2)
+```
+As the number of eliminations increases by 1 kill, we expect the TotalXP to increase by 216.4847 XP, on average.
+<p>&nbsp;</p>
+
+### Task 3
+**Question:**  Among the 3 different classification algorithms we used, which can more accurately classify if the player won or lost the game based on the match attributes?
+
+The three classification algorithms used were logistic regression (with backwards elimination), random forest, and support machine vector. To more accurately compare the models, we used the same train/test datasets across all three models. Before splitting the data, we standardized the data since SVM is based on distance. Standardizing or scaling the data should not affect the accuracy of the models. 
+<p>&nbsp;</p>
+#### Preparing the dataset
+```{r}
+# Remove variables directly related to winning
+player_data_sub_task3 <-
+  player_data_sub %>%
+  select(c(-player_score, -enemy_score, -Score))  # These directly predict if we are going to win or not (perfect separation) 
+
+# Remove NAs
+player_data_sub_task3 <-
+  player_data_sub_task3 %>%
+  na.omit()
+
+# Scale the data
+xvars <- colnames(player_data_sub_task3)
+
+xvars <- xvars[!xvars %in% c('won_match')]
+
+player_data_sub_task3[, xvars] <- scale(player_data_sub_task3[, xvars],center = TRUE, scale = TRUE)
+
+# Train/Test split 
+set.seed(123)
+train_ind <- sample(1:nrow(player_data_sub_task3), floor(0.8 * nrow(player_data_sub_task3)))
+set.seed(NULL)
+
+Train <- player_data_sub_task3[train_ind, ]
+Test <- player_data_sub_task3[-train_ind, ]
+```
+
+<p>&nbsp;</p>
+#### Method 1: Logistic Regression
+```{r, warning=FALSE,message=FALSE,results='hide'}
+# Use logistic regression 
+full_model3 <- glm(as.factor(won_match) ~.,
+             family = binomial,
+             data = Train)
+
+model_task3 <- stats::step(full_model3, # This isn't needed for backwards induction
+             data = Train,
+             direction = "backward")
+```
+
+```{r}
+summary(model_task3)
+```
+
+
+```{r}
+thresholds <- as_tibble(seq(0,1, by = 0.01))
+
+names(thresholds) <- "thresholds"
+
+task3 <- as_tibble(Test$won_match)
+names(task3) <- "won_match"
+
+pred_prob <- predict(model_task3, newdata = Test, type = "response")
+
+task3 <- cbind(task3, pred_prob)
+
+accuracy <- data.frame(rep(NA, 101))
+
+for (i in 1:nrow(accuracy)){
+  probs <- 
+    task3 %>%
+    mutate(threshold = thresholds$thresholds[i])
+  probs <-
+    probs %>%
+    mutate(predicted = ifelse(pred_prob > threshold, "win", "loss"),
+           TPmatch = ifelse(won_match == 1 & predicted == "win", 1 ,0),
+           FNmatch = ifelse(won_match == 1 & predicted == "loss", 1, 0),
+           TNmatch = ifelse(won_match == 0 & predicted == "loss", 1, 0),
+           FPmatch = ifelse(won_match == 0 & predicted == "win", 1, 0)) %>%
+    summarize(TP = sum(TPmatch),
+              FN = sum(FNmatch),
+              TN = sum(TNmatch),
+              FP = sum(FPmatch)) %>%
+    summarize(ACC = (TP+TN)/(TP + FP + TN + FN))
+  
+  accuracy[i, ] <- probs
+  
+}
+thresholds <- cbind(thresholds, accuracy)
+
+threshold_ind <- which.max(thresholds$rep.NA..101.)
+threshold_ind
+threshold <- thresholds[38, 1]
+
+pred_won <- ifelse(pred_prob > threshold, 1, 0)
+
+# Confusion Matrix
+confusionMatrix(data = as.factor(pred_won), positive = "1", reference = as.factor(Test$won_match))
+
+```
+
+For Method 1, we used backward elimination for logistic regression to select the predictors used in the model. Using the new model, we created predicted values based on the `Test` dataset. To determine if the predicted values should be classified as won or lost, a threshold between the two needs to be established. We used a loop to check the threshold values from 0 to 1 using steps of 0.01 to determine the threshold that would produce the best accuracy. For this logistic model, we were able to accuracy classify 67.8 percent of the matches.
+<p>&nbsp;</p>
+### Method 2: Random Forest
+
+```{r}
+set.seed(123)
+rf <- randomForest(as.factor(won_match) ~ ., data = Train, importance = TRUE, na.action = na.omit)
+set.seed(NULL)
+```
+
+```{r}
+## Obtain Predicted classes
+pred_surv <- predict(rf, newdata = Test, type = "class")
+head(pred_surv)
+```
+
+```{r}
+## Obtain Confusion matrix and calculate accuracy
+
+#Confusion Matrix
+table(pred_surv, Test$won_match)
+
+#Calculate accuracy
+mean(pred_surv == Test$won_match)
+```
+
+For Method 2, we used random forest to calculate the predicted probabilities in order to create a confusion matrix, in which we got an accuracy of 0.5977.
+<p>&nbsp;</p>
+### Method 3: SVM
+```{r, results='hide'}
+set.seed(1)
+tuned_cost <- tune.svm(won_match ~.,
+                       data = Train,
+                       kernel = "linear",
+                       cost = seq(0.01, 1, by = 0.01),
+                       scale = FALSE)
+set.seed(NULL)
+summary(tuned_cost)
+```
+
+```{r}
+set.seed(1)
+svm_model <- svm(won_match ~.,
+                 data = Train,
+                 type = "C-classification",
+                 kernel = "linear",
+                 cost = 0.2702391,
+                 scale = FALSE)
+
+set.seed(1)
+pred_prob3 <- predict(svm_model, Test)
+prob3 <- mean(pred_prob3 == Test$won_match)
+
+prob3
+```
+
+For Method 3, we used Support Vector Machine (SVM). We did not use feature selection techniques for the SVM model as it is generally more helpful for datasets with large numbers of variables such as gene selection and text categorization (Guyon & Elisseeff, 2003). We tuned the cost of our SVM model, which selected the best cost value between 0.01 and 5, with steps of 0.01. By tuning the cost function of our SVM model, we achieved an accuracy of 0.63.
+<p>&nbsp;</p>
+### Conclusion for Task 3
+
+Among the 3 classification methods, the logistic regression (Method 1) resulted in the highest accuracy for classifying whether the player won or lost the game. The logistic regression was predicted 67.8 percent of matches, followed by SVM with 63% and random forest with roughly 59.7%. Using the same `Train`/`Test` datasets allowed us to directly compare the accuracy between each model. It is possible in the future we could tune the random forest and SVM models to produce more accurate results.
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+### References
+<p>&nbsp;</p>
+Leibl, M. (2022). *Where is Call of Duty: Modern Warfare's Hardcore Mode?*. AppTrigger. https://apptrigger.com/2022/10/28/call-duty-modern-warfare-disable-crossplay/ 
+
+Guyon, I. & Elisseef, A. (2003). An Introduction to Variable and Feature Selection. 
+*Journal of Machine Learning Research, 3(7-8), 1157–1182*. https://doi.org/10.1162/153244303322753616
