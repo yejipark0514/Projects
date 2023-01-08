@@ -1,6 +1,6 @@
 ---
-title: "STAT380 Final Project"
-author: Jonathan Bryant, Natalie Chow, Yearin Kim, Yeji Park 
+title: "Video Games Project"
+author: Yeji Park 
 output: html_document
 date: "December 12, 2022"
 ---
@@ -29,6 +29,7 @@ CODGameModes <- read_csv("CODGameModes.csv")
 **Research Question:** Which game mode is most likely to reach the score limit? 
 
 The data for this project consists of three separate datasets, which were used to determine the game mode that was most likely to reach the score limit. Each player's dataset was imported into their own dataframes, and then combined using the code below. A new variable `Player` was added to each dataframe before combining in case distinguishing each player became relevant for future analysis.
+
 <p>&nbsp;</p>
 #### Preparing the data
 ```{r}
@@ -226,6 +227,7 @@ After separating the player and enemy scores, we compared each team's score to t
 ### Task 2
 
 **Research Question:** Build a model for modeling the TotalXP variable. Which predictors are associated with TotalXP? What is the relationship between one of the predictors and TotalXP?
+
 <p>&nbsp;</p>
 #### a. Which predictors are associated with the TotalXP?
 
